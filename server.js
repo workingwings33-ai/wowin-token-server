@@ -5,7 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 
 // Use whichever token lib you installed:
-const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
+const { RtcTokenBuilder, RtcRole } = require('agora-token');
 // if you installed '@agoraio/agora-access-token', change import accordingly.
 
 const APP_ID = process.env.AGORA_APP_ID || '';
@@ -56,3 +56,4 @@ app.post('/token', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Agora token server listening on port ${PORT}`);
 });
+
