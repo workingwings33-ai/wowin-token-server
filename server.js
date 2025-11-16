@@ -56,4 +56,3 @@ app.post('/token', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Agora token server listening on port ${PORT}`);
 });
-
