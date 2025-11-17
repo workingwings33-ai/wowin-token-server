@@ -52,6 +52,52 @@ app.post('/token', (req, res) => {
     return res.status(500).json({ error: 'token_generation_failed' });
   }
 });
+// CALL API — send FCM notification to callee
+app.post('/call', async (req, res) => {
+  const { callerName, callerArea, callerCity, callerPhone, calleeId, channelName } = req.body;
+
+  if (!calleeId || !channelName) {
+    return res.status(400).json({ error: "Missing calleeId or channelName" });
+  }
+
+  try {
+    const admin = require("firebase-admin");
+
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+      });
+    }
+
+    // Fetch callee's FCM token
+    const db = admin.firestore();
+    const calleeDoc = await db.collection("users").doc(calleeId).get();
+
+    const fcmToken = calleeDoc.get("fcmToken");
+    if (!fcmToken) return res.status(400).json({ error: "callee FCM token missing" });
+
+    // Build notification
+    const message = {
+      token: fcmToken,
+      data: {
+        type: "INCOMING_CALL",
+        channelName,
+        callerName,
+        callerArea,
+        callerCity,
+        callerPhone,
+      }
+    };
+
+    await admin.messaging().send(message);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("CALL ERROR", err);
+    return res.status(500).json({ error: "call_failed" });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Agora token server listening on port ${PORT}`);
