@@ -2,17 +2,20 @@
   "name": "agora-token-server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "agora-access-token": "^2.0.4",
     "agora-token": "^2.0.5",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "firebase-admin": "^11.10.1"   // ⭐ REQUIRED
   }
 }

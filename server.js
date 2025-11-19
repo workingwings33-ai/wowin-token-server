@@ -1,41 +1,69 @@
 // server.js
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
 
-// Use whichever token lib you installed:
-const { RtcTokenBuilder, RtcRole } = require('agora-token');
-// if you installed '@agoraio/agora-access-token', change import accordingly.
+// Agora Token Builder
+const { RtcTokenBuilder, RtcRole } = require("agora-token");
 
-const APP_ID = process.env.AGORA_APP_ID || '';
-const APP_CERT = process.env.AGORA_APP_CERT || '';
+// Firebase Admin SDK
+const admin = require("firebase-admin");
+
+// ENV Vars
+const APP_ID = process.env.AGORA_APP_ID || "";
+const APP_CERT = process.env.AGORA_APP_CERT || "";
 const PORT = process.env.PORT || 3000;
 
 if (!APP_ID || !APP_CERT) {
-  console.warn('AGORA_APP_ID or AGORA_APP_CERT missing. Tokens will fail until set.');
+  console.warn("⚠️ AGORA_APP_ID or AGORA_APP_CERT not found!");
 }
 
+// Firebase Admin init
+try {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(
+        JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+      ),
+    });
+    console.log("✅ Firebase Admin initialized");
+  }
+} catch (e) {
+  console.error("❌ Firebase Admin init failed", e);
+}
+
+const db = admin.firestore();
+
+// Express setup
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-app.get('/', (req, res) => res.send('Agora token server is running'));
+app.get("/", (req, res) => {
+  res.send("🔥 Wowin Agora Token Server is running");
+});
 
 /**
  * POST /token
- * body: { channelName: string, uid?: number|string, ttl?: number }
+ * Generate Agora RTC token
  */
-app.post('/token', (req, res) => {
+app.post("/token", (req, res) => {
+  console.log("📩 /token request:", req.body);
+
   try {
     const { channelName, uid, ttl } = req.body;
-    if (!channelName) return res.status(400).json({ error: 'channelName required' });
 
-    const privilegeExpireSeconds = Number(ttl) || 3600;
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-    const expireTimestamp = currentTimestamp + privilegeExpireSeconds;
+    if (!channelName) {
+      return res.status(400).json({ error: "channelName required" });
+    }
 
-    const uidNum = (uid === undefined || uid === null) ? 0 : Number(uid) || 0;
+    const expireSeconds = Number(ttl) || 3600;
+    const now = Math.floor(Date.now() / 1000);
+    const expire = now + expireSeconds;
+
+    const uidNum =
+      uid === undefined || uid === null ? 0 : Number(uid) || 0;
 
     const token = RtcTokenBuilder.buildTokenWithUid(
       APP_ID,
@@ -43,40 +71,57 @@ app.post('/token', (req, res) => {
       channelName,
       uidNum,
       RtcRole.PUBLISHER,
-      expireTimestamp
+      expire
     );
 
-    return res.json({ token, expiresAt: expireTimestamp });
+    console.log("🎉 Token generated for:", channelName);
+
+    return res.json({ token, expiresAt: expire });
   } catch (err) {
-    console.error('Error building token', err);
-    return res.status(500).json({ error: 'token_generation_failed' });
+    console.error("❌ TOKEN ERROR:", err);
+    return res.status(500).json({ error: "token_generation_failed" });
   }
 });
-// CALL API — send FCM notification to callee
-app.post('/call', async (req, res) => {
-  const { callerName, callerArea, callerCity, callerPhone, calleeId, channelName } = req.body;
+
+/**
+ * POST /call
+ * Sends FCM push to callee for incoming call
+ */
+app.post("/call", async (req, res) => {
+  console.log("📩 /call request:", req.body);
+
+  const {
+    callerName,
+    callerArea,
+    callerCity,
+    callerPhone,
+    calleeId,
+    channelName,
+  } = req.body;
 
   if (!calleeId || !channelName) {
-    return res.status(400).json({ error: "Missing calleeId or channelName" });
+    return res
+      .status(400)
+      .json({ error: "Missing calleeId or channelName" });
   }
 
   try {
-    const admin = require("firebase-admin");
+    // Get callee Firestore document
+    const doc = await db.collection("users").doc(calleeId).get();
 
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
-      });
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Callee not found" });
     }
 
-    // Fetch callee's FCM token
-    const db = admin.firestore();
-    const calleeDoc = await db.collection("users").doc(calleeId).get();
+    const fcmToken = doc.get("fcmToken");
 
-    const fcmToken = calleeDoc.get("fcmToken");
-    if (!fcmToken) return res.status(400).json({ error: "callee FCM token missing" });
+    if (!fcmToken) {
+      console.log("❌ Callee FCM token missing");
+      return res.status(400).json({ error: "callee FCM token missing" });
+    }
 
-    // Build notification
+    console.log("📨 Sending FCM to:", fcmToken);
+
     const message = {
       token: fcmToken,
       data: {
@@ -86,19 +131,24 @@ app.post('/call', async (req, res) => {
         callerArea,
         callerCity,
         callerPhone,
-      }
+      },
+      android: {
+        priority: "high",
+      },
     };
 
     await admin.messaging().send(message);
 
+    console.log("📞 Incoming call push sent successfully");
+
     return res.json({ success: true });
   } catch (err) {
-    console.error("CALL ERROR", err);
+    console.error("❌ CALL ERROR:", err);
     return res.status(500).json({ error: "call_failed" });
   }
 });
 
-
+// Start server
 app.listen(PORT, () => {
-  console.log(`Agora token server listening on port ${PORT}`);
+  console.log(`🚀 Wowin Token Server running on port ${PORT}`);
 });
