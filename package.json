@@ -16,6 +16,6 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "firebase-admin": "^11.10.1"   // ⭐ REQUIRED
+    "firebase-admin": "^11.10.1"
   }
 }
